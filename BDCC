@@ -1,0 +1,81 @@
+CREATE DATABASE gestao_empresarial;
+USE gestao_empresarial;
+
+CREATE TABLE RH (
+    id_rh INT AUTO_INCREMENT PRIMARY KEY,
+    nome_funcionario VARCHAR(100) NOT NULL,
+    cpf_funcionario VARCHAR(14) NOT NULL UNIQUE,
+    cargo VARCHAR(50) NOT NULL,
+    salario_base DECIMAL(10,2) NOT NULL,
+    status_contrato ENUM('ativo', 'desligado', 'temporário', 'afastado', 'estagiário') NOT NULL,
+    departamento VARCHAR(50) NOT NULL,
+    email_corporativo VARCHAR(100) NOT NULL UNIQUE,
+    telefone_contato VARCHAR(20) NOT NULL,
+    INDEX idx_departamento (departamento),
+    INDEX idx_status_contrato (status_contrato)
+);
+
+CREATE TABLE Financeiro (
+    id_financeiro INT AUTO_INCREMENT PRIMARY KEY,
+    descricao_transacao VARCHAR(200) NOT NULL,
+    tipo_transacao ENUM('receita', 'despesa', 'investimento', 'transferência', 'outro') NOT NULL,
+    valor DECIMAL(10,2) NOT NULL,
+    data_transacao DATE NOT NULL,
+    responsavel_financeiro VARCHAR(100) NOT NULL,
+    forma_pagamento ENUM('boleto', 'transferência', 'cartão', 'pix', 'dinheiro', 'outro') NOT NULL,
+    centro_custo VARCHAR(50) NOT NULL,
+    status_transacao ENUM('pendente', 'concluída', 'cancelada', 'estornada') NOT NULL,
+    INDEX idx_data_transacao (data_transacao),
+    INDEX idx_tipo_transacao (tipo_transacao),
+    INDEX idx_centro_custo (centro_custo)
+);
+
+CREATE TABLE TI (
+    id_ti INT AUTO_INCREMENT PRIMARY KEY,
+    nome_responsavel VARCHAR(100) NOT NULL,
+    email_suporte VARCHAR(100) NOT NULL,
+    ativo_ti ENUM('computador', 'servidor', 'rede', 'impressora', 'software', 'outro') NOT NULL,
+    id_ativo VARCHAR(50) NOT NULL UNIQUE,
+    status_ativo ENUM('ativo', 'em manutenção', 'substituído', 'desativado') NOT NULL,
+    data_aquisicao DATE NOT NULL,
+    data_manutencao DATE,
+    chamados_abertos INT DEFAULT 0,
+    nivel_prioridade ENUM('baixa', 'média', 'alta', 'crítica'),
+    INDEX idx_status_ativo (status_ativo),
+    INDEX idx_ativo_ti (ativo_ti)
+);
+
+CREATE TABLE Operacoes (
+    id_operacao INT AUTO_INCREMENT PRIMARY KEY,
+    nome_atividade VARCHAR(100) NOT NULL,
+    responsavel_atividade VARCHAR(100) NOT NULL,
+    data_inicio DATE NOT NULL,
+    data_fim_prevista DATE NOT NULL,
+    status_atividade ENUM('em andamento', 'concluída', 'pausada', 'cancelada', 'planejada') NOT NULL,
+    recurso_utilizado VARCHAR(200),
+    custo_estimado DECIMAL(10,2),
+    departamento_relacionado VARCHAR(50) NOT NULL,
+    descricao_atividade TEXT,
+    INDEX idx_status_atividade (status_atividade),
+    INDEX idx_departamento_relacionado (departamento_relacionado),
+    INDEX idx_data_inicio (data_inicio)
+);
+
+CREATE TABLE RH_Operacoes (
+    id_rh INT,
+    id_operacao INT,
+    papel_na_atividade VARCHAR(50),
+    horas_alocadas DECIMAL(5,2),
+    PRIMARY KEY (id_rh, id_operacao),
+    FOREIGN KEY (id_rh) REFERENCES RH(id_rh) ON DELETE CASCADE,
+    FOREIGN KEY (id_operacao) REFERENCES Operacoes(id_operacao) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Tarefas (
+    id_tarefa INT AUTO_INCREMENT PRIMARY KEY,
+    descricao VARCHAR(255) NOT NULL,
+    status ENUM('pendente', 'concluída') DEFAULT 'pendente',
+    data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
+    data_conclusao DATETIME NULL,
+    responsavel VARCHAR(100) NOT NULL
+);
