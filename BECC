@@ -1,0 +1,620 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+from datetime import datetime
+import mysql.connector
+from mysql.connector import Error
+
+class SistemaGestaoEmpresarial:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Checklist Corporativo")
+        self.root.geometry("1200x700")
+        
+        # Configurações de conexão
+        self.db_config = {
+            'host': 'localhost',
+            'user': 'root',
+            'password': 'toor',
+            'database': 'gestao_empresarial'
+        }
+        
+        # Variáveis de controle
+        self.usuario_logado = None
+        self.admin_logado = False
+        
+        # Conectar ao MySQL
+        self.conexao = self.conectar_mysql()
+        if not self.conexao:
+            return
+            
+        # Criar interface
+        self.criar_interface()
+    
+    def conectar_mysql(self):
+        try:
+            conexao = mysql.connector.connect(**self.db_config)
+            print("Conexão ao MySQL estabelecida com sucesso!")
+            return conexao
+        except Error as e:
+            messagebox.showerror("Erro de Conexão", 
+                f"Não foi possível conectar ao MySQL:\n{e}\n\n"
+                "Verifique:\n1. Se o MySQL está rodando\n2. Se as credenciais estão corretas\n"
+                "3. Se o banco de dados existe\n\nO aplicativo será fechado.")
+            self.root.destroy()
+            return None
+    
+    def criar_interface(self):
+        # Frame de login
+        self.frame_login = ttk.Frame(self.root, padding=20)
+        self.frame_login.pack(fill='both', expand=True)
+        
+        ttk.Label(self.frame_login, text="Login", font=('Helvetica', 16)).pack(pady=10)
+        
+        ttk.Label(self.frame_login, text="Usuário:").pack()
+        self.entry_usuario = ttk.Entry(self.frame_login)
+        self.entry_usuario.pack(pady=5)
+        self.entry_usuario.focus()
+        
+        ttk.Label(self.frame_login, text="Senha:").pack()
+        self.entry_senha = ttk.Entry(self.frame_login, show="*")
+        self.entry_senha.pack(pady=5)
+        
+        ttk.Button(self.frame_login, text="Entrar", command=self.fazer_login).pack(pady=10)
+        
+        # Frame principal
+        self.frame_principal = ttk.Frame(self.root)
+        
+        # Barra superior
+        self.frame_superior = ttk.Frame(self.frame_principal)
+        self.frame_superior.pack(fill='x', padx=10, pady=10)
+        
+        self.label_usuario = ttk.Label(self.frame_superior, text="")
+        self.label_usuario.pack(side='left')
+        
+        self.btn_sair = ttk.Button(self.frame_superior, text="Sair", command=self.logout)
+        self.btn_sair.pack(side='right')
+        
+        # Notebook (abas)
+        self.notebook = ttk.Notebook(self.frame_principal)
+        self.notebook.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Aba de RH (agora com Checklist integrado)
+        self.aba_rh = ttk.Frame(self.notebook)
+        self.notebook.add(self.aba_rh, text="Recursos Humanos")
+        self.criar_aba_rh_com_tarefas()
+        
+        # Aba de Financeiro (apenas interface)
+        self.aba_financeiro = ttk.Frame(self.notebook)
+        self.notebook.add(self.aba_financeiro, text="Financeiro")
+        self.criar_aba_financeiro_interface()
+        
+        # Aba de TI (apenas interface)
+        self.aba_ti = ttk.Frame(self.notebook)
+        self.notebook.add(self.aba_ti, text="Tecnologia da Informação")
+        self.criar_aba_ti_interface()
+        
+        # Aba de Operações (apenas interface)
+        self.aba_operacoes = ttk.Frame(self.notebook)
+        self.notebook.add(self.aba_operacoes, text="Operações")
+        self.criar_aba_operacoes_interface()
+    
+    def criar_aba_rh_com_tarefas(self):
+        # Frame principal com Notebook para RH e Tarefas
+        notebook_rh = ttk.Notebook(self.aba_rh)
+        notebook_rh.pack(fill='both', expand=True)
+        
+        # Sub-aba de Funcionários
+        frame_funcionarios = ttk.Frame(notebook_rh)
+        notebook_rh.add(frame_funcionarios, text="Funcionários")
+        self.criar_aba_funcionarios(frame_funcionarios)
+        
+        # Sub-aba de Tarefas
+        frame_tarefas = ttk.Frame(notebook_rh)
+        notebook_rh.add(frame_tarefas, text="Checklist de Tarefas")
+        self.criar_aba_tarefas(frame_tarefas)
+    
+    def criar_aba_funcionarios(self, parent_frame):
+        # Frame de filtros
+        frame_filtros = ttk.Frame(parent_frame)
+        frame_filtros.pack(fill='x', padx=10, pady=10)
+        
+        ttk.Label(frame_filtros, text="Filtrar por departamento:").grid(row=0, column=0, padx=5)
+        self.filtro_departamento_rh = ttk.Combobox(frame_filtros, values=self.obter_departamentos())
+        self.filtro_departamento_rh.grid(row=0, column=1, padx=5)
+        
+        ttk.Button(frame_filtros, text="Aplicar Filtro", command=self.carregar_funcionarios).grid(row=0, column=2, padx=5)
+        
+        # Botões CRUD
+        frame_botoes = ttk.Frame(parent_frame)
+        frame_botoes.pack(fill='x', padx=10, pady=10)
+        
+        ttk.Button(frame_botoes, text="Adicionar Funcionário", command=self.abrir_formulario_rh).pack(side='left', padx=5)
+        ttk.Button(frame_botoes, text="Editar", command=self.editar_funcionario).pack(side='left', padx=5)
+        ttk.Button(frame_botoes, text="Excluir", command=self.excluir_funcionario).pack(side='left', padx=5)
+        
+        # Treeview para funcionários
+        frame_tree = ttk.Frame(parent_frame)
+        frame_tree.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        columns = ("ID", "Nome", "CPF", "Cargo", "Salário", "Status", "Departamento", "Email", "Telefone")
+        self.tree_rh = ttk.Treeview(frame_tree, columns=columns, show='headings')
+        
+        for col in columns:
+            self.tree_rh.heading(col, text=col)
+            self.tree_rh.column(col, width=100, anchor='center')
+        
+        self.tree_rh.column("Nome", width=150)
+        self.tree_rh.column("Email", width=200)
+        
+        scrollbar = ttk.Scrollbar(frame_tree, orient="vertical", command=self.tree_rh.yview)
+        self.tree_rh.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side='right', fill='y')
+        self.tree_rh.pack(fill='both', expand=True)
+        
+        # Carregar dados
+        self.carregar_funcionarios()
+    
+    def criar_aba_tarefas(self, parent_frame):
+        # Frame de adição de tarefas
+        frame_adicionar = ttk.Frame(parent_frame)
+        frame_adicionar.pack(fill='x', padx=10, pady=10)
+        
+        ttk.Label(frame_adicionar, text="Nova Tarefa:").pack(side='left')
+        self.entry_tarefa = ttk.Entry(frame_adicionar, width=50)
+        self.entry_tarefa.pack(side='left', padx=5)
+        
+        ttk.Button(frame_adicionar, text="Adicionar", command=self.adicionar_tarefa).pack(side='left')
+        
+        # Frame de filtros
+        frame_filtros = ttk.Frame(parent_frame)
+        frame_filtros.pack(fill='x', padx=10, pady=5)
+        
+        ttk.Label(frame_filtros, text="Filtrar por status:").grid(row=0, column=0, padx=5)
+        self.filtro_status_tarefas = ttk.Combobox(frame_filtros, values=["Todas", "pendente", "concluída"])
+        self.filtro_status_tarefas.current(0)
+        self.filtro_status_tarefas.grid(row=0, column=1, padx=5)
+        
+        ttk.Button(frame_filtros, text="Aplicar Filtro", command=self.carregar_tarefas).grid(row=0, column=2, padx=5)
+        
+        # Lista de tarefas
+        frame_lista = ttk.Frame(parent_frame)
+        frame_lista.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Treeview para tarefas
+        columns = ("ID", "Tarefa", "Status", "Data Criação", "Responsável")
+        self.tree_tarefas = ttk.Treeview(frame_lista, columns=columns, show='headings', selectmode='browse')
+        
+        for col in columns:
+            self.tree_tarefas.heading(col, text=col)
+            self.tree_tarefas.column(col, width=100, anchor='center')
+        
+        self.tree_tarefas.column("Tarefa", width=300)
+        
+        scrollbar = ttk.Scrollbar(frame_lista, orient="vertical", command=self.tree_tarefas.yview)
+        self.tree_tarefas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side='right', fill='y')
+        self.tree_tarefas.pack(fill='both', expand=True)
+        
+        # Botões de ação para tarefas
+        frame_acoes = ttk.Frame(parent_frame)
+        frame_acoes.pack(fill='x', padx=10, pady=10)
+        
+        ttk.Button(frame_acoes, text="Marcar como Concluída", command=self.marcar_tarefa_concluida).pack(side='left', padx=5)
+        ttk.Button(frame_acoes, text="Excluir Tarefa", command=self.excluir_tarefa).pack(side='left', padx=5)
+        
+        # Carregar tarefas
+        self.carregar_tarefas()
+    
+    def criar_aba_financeiro_interface(self):
+        # Frame de filtros (apenas visual)
+        frame_filtros = ttk.Frame(self.aba_financeiro)
+        frame_filtros.pack(fill='x', padx=10, pady=10)
+        
+        ttk.Label(frame_filtros, text="Filtrar por tipo:").grid(row=0, column=0, padx=5)
+        ttk.Combobox(frame_filtros, values=["Todos", "receita", "despesa", "investimento"]).grid(row=0, column=1, padx=5)
+        ttk.Button(frame_filtros, text="Aplicar Filtro").grid(row=0, column=2, padx=5)
+        
+        # Botões (apenas visual)
+        frame_botoes = ttk.Frame(self.aba_financeiro)
+        frame_botoes.pack(fill='x', padx=10, pady=10)
+        
+        ttk.Button(frame_botoes, text="Adicionar Transação").pack(side='left', padx=5)
+        ttk.Button(frame_botoes, text="Editar").pack(side='left', padx=5)
+        ttk.Button(frame_botoes, text="Excluir").pack(side='left', padx=5)
+        
+        # Treeview (apenas visual)
+        frame_tree = ttk.Frame(self.aba_financeiro)
+        frame_tree.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        columns = ("ID", "Descrição", "Tipo", "Valor", "Data")
+        tree = ttk.Treeview(frame_tree, columns=columns, show='headings')
+        
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=100, anchor='center')
+        
+        scrollbar = ttk.Scrollbar(frame_tree, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side='right', fill='y')
+        tree.pack(fill='both', expand=True)
+        
+        # Adicionar dados de exemplo (apenas visual)
+        for i in range(1, 6):
+            tree.insert('', 'end', values=(i, f"Transação {i}", "receita", f"R$ {i*1000:.2f}", "01/01/2023"))
+    
+    def criar_aba_ti_interface(self):
+        # Frame de filtros (apenas visual)
+        frame_filtros = ttk.Frame(self.aba_ti)
+        frame_filtros.pack(fill='x', padx=10, pady=10)
+        
+        ttk.Label(frame_filtros, text="Filtrar por status:").grid(row=0, column=0, padx=5)
+        ttk.Combobox(frame_filtros, values=["Todos", "ativo", "em manutenção"]).grid(row=0, column=1, padx=5)
+        ttk.Button(frame_filtros, text="Aplicar Filtro").grid(row=0, column=2, padx=5)
+        
+        # Botões (apenas visual)
+        frame_botoes = ttk.Frame(self.aba_ti)
+        frame_botoes.pack(fill='x', padx=10, pady=10)
+        
+        ttk.Button(frame_botoes, text="Adicionar Ativo").pack(side='left', padx=5)
+        ttk.Button(frame_botoes, text="Editar").pack(side='left', padx=5)
+        ttk.Button(frame_botoes, text="Excluir").pack(side='left', padx=5)
+        
+        # Treeview (apenas visual)
+        frame_tree = ttk.Frame(self.aba_ti)
+        frame_tree.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        columns = ("ID", "Tipo", "Modelo", "Status")
+        tree = ttk.Treeview(frame_tree, columns=columns, show='headings')
+        
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=100, anchor='center')
+        
+        scrollbar = ttk.Scrollbar(frame_tree, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side='right', fill='y')
+        tree.pack(fill='both', expand=True)
+        
+        # Adicionar dados de exemplo (apenas visual)
+        for i in range(1, 6):
+            tree.insert('', 'end', values=(i, "Computador", f"Modelo {i}", "ativo"))
+    
+    def criar_aba_operacoes_interface(self):
+        # Frame de filtros (apenas visual)
+        frame_filtros = ttk.Frame(self.aba_operacoes)
+        frame_filtros.pack(fill='x', padx=10, pady=10)
+        
+        ttk.Label(frame_filtros, text="Filtrar por status:").grid(row=0, column=0, padx=5)
+        ttk.Combobox(frame_filtros, values=["Todos", "em andamento", "concluída"]).grid(row=0, column=1, padx=5)
+        ttk.Button(frame_filtros, text="Aplicar Filtro").grid(row=0, column=2, padx=5)
+        
+        # Botões (apenas visual)
+        frame_botoes = ttk.Frame(self.aba_operacoes)
+        frame_botoes.pack(fill='x', padx=10, pady=10)
+        
+        ttk.Button(frame_botoes, text="Adicionar Operação").pack(side='left', padx=5)
+        ttk.Button(frame_botoes, text="Editar").pack(side='left', padx=5)
+        ttk.Button(frame_botoes, text="Excluir").pack(side='left', padx=5)
+        
+        # Treeview (apenas visual)
+        frame_tree = ttk.Frame(self.aba_operacoes)
+        frame_tree.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        columns = ("ID", "Nome", "Responsável", "Status")
+        tree = ttk.Treeview(frame_tree, columns=columns, show='headings')
+        
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=100, anchor='center')
+        
+        scrollbar = ttk.Scrollbar(frame_tree, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side='right', fill='y')
+        tree.pack(fill='both', expand=True)
+        
+        # Adicionar dados de exemplo (apenas visual)
+        for i in range(1, 6):
+            tree.insert('', 'end', values=(i, f"Operação {i}", "Responsável", "em andamento"))
+
+    # Métodos para RH (funcionando)
+    def abrir_formulario_rh(self, funcionario_id=None):
+        janela = tk.Toplevel(self.root)
+        janela.title("Novo Funcionário" if not funcionario_id else "Editar Funcionário")
+        janela.geometry("500x500")
+        
+        campos = [
+            ("Nome:", ttk.Entry(janela)),
+            ("CPF:", ttk.Entry(janela)),
+            ("Cargo:", ttk.Entry(janela)),
+            ("Salário Base:", ttk.Entry(janela)),
+            ("Status Contrato:", ttk.Combobox(janela, values=["ativo", "desligado", "temporário", "afastado", "estagiário"])),
+            ("Departamento:", ttk.Combobox(janela, values=self.obter_departamentos())),
+            ("Email Corporativo:", ttk.Entry(janela)),
+            ("Telefone Contato:", ttk.Entry(janela))
+        ]
+        
+        for i, (label, widget) in enumerate(campos):
+            ttk.Label(janela, text=label).grid(row=i, column=0, padx=5, pady=5, sticky='e')
+            widget.grid(row=i, column=1, padx=5, pady=5, sticky='we')
+        
+        if funcionario_id:
+            try:
+                cursor = self.conexao.cursor(dictionary=True)
+                cursor.execute("SELECT * FROM RH WHERE id_rh = %s", (funcionario_id,))
+                func = cursor.fetchone()
+                cursor.close()
+                
+                if func:
+                    campos[0][1].insert(0, func['nome_funcionario'])
+                    campos[1][1].insert(0, func['cpf_funcionario'])
+                    campos[2][1].insert(0, func['cargo'])
+                    campos[3][1].insert(0, str(func['salario_base']))
+                    campos[4][1].set(func['status_contrato'])
+                    campos[5][1].set(func['departamento'])
+                    campos[6][1].insert(0, func['email_corporativo'])
+                    campos[7][1].insert(0, func['telefone_contato'])
+            except Error as e:
+                messagebox.showerror("Erro", f"Falha ao carregar funcionário: {e}")
+                janela.destroy()
+                return
+        
+        ttk.Button(janela, text="Salvar", command=lambda: self.salvar_funcionario(
+            [widget.get() for _, widget in campos],
+            funcionario_id,
+            janela
+        )).grid(row=len(campos), column=0, columnspan=2, pady=10)
+    
+    def salvar_funcionario(self, dados, funcionario_id=None, janela=None):
+        try:
+            cursor = self.conexao.cursor()
+            
+            try:
+                salario = float(dados[3])
+            except ValueError:
+                messagebox.showwarning("Aviso", "Salário deve ser um valor numérico!")
+                return
+            
+            if funcionario_id:
+                cursor.execute("""
+                    UPDATE RH SET 
+                    nome_funcionario = %s,
+                    cpf_funcionario = %s,
+                    cargo = %s,
+                    salario_base = %s,
+                    status_contrato = %s,
+                    departamento = %s,
+                    email_corporativo = %s,
+                    telefone_contato = %s
+                    WHERE id_rh = %s
+                """, (*dados[:8], funcionario_id))
+            else:
+                cursor.execute("""
+                    INSERT INTO RH (
+                        nome_funcionario, cpf_funcionario, cargo, 
+                        salario_base, status_contrato, departamento, 
+                        email_corporativo, telefone_contato
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, dados[:8])
+            
+            self.conexao.commit()
+            cursor.close()
+            
+            if janela:
+                janela.destroy()
+            
+            self.carregar_funcionarios()
+            messagebox.showinfo("Sucesso", "Funcionário salvo com sucesso!")
+            
+        except Error as e:
+            messagebox.showerror("Erro", f"Falha ao salvar funcionário: {e}")
+    
+    def editar_funcionario(self):
+        selecionado = self.tree_rh.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione um funcionário!")
+            return
+            
+        funcionario_id = self.tree_rh.item(selecionado[0])['values'][0]
+        self.abrir_formulario_rh(funcionario_id)
+    
+    def excluir_funcionario(self):
+        selecionado = self.tree_rh.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione um funcionário!")
+            return
+            
+        if not messagebox.askyesno("Confirmação", "Tem certeza que deseja excluir este funcionário?"):
+            return
+            
+        funcionario_id = self.tree_rh.item(selecionado[0])['values'][0]
+        
+        try:
+            cursor = self.conexao.cursor()
+            cursor.execute("DELETE FROM RH WHERE id_rh = %s", (funcionario_id,))
+            self.conexao.commit()
+            cursor.close()
+            
+            self.carregar_funcionarios()
+            messagebox.showinfo("Sucesso", "Funcionário excluído com sucesso!")
+            
+        except Error as e:
+            messagebox.showerror("Erro", f"Falha ao excluir funcionário: {e}")
+    
+    # Métodos para Tarefas (funcionando)
+    def adicionar_tarefa(self):
+        descricao = self.entry_tarefa.get().strip()
+        if not descricao:
+            messagebox.showwarning("Aviso", "Digite uma descrição para a tarefa!")
+            return
+            
+        try:
+            cursor = self.conexao.cursor()
+            cursor.execute("""
+                INSERT INTO Tarefas (descricao, status, responsavel) 
+                VALUES (%s, 'pendente', %s)
+            """, (descricao, self.usuario_logado))
+            self.conexao.commit()
+            cursor.close()
+            
+            self.entry_tarefa.delete(0, tk.END)
+            self.carregar_tarefas()
+            messagebox.showinfo("Sucesso", "Tarefa adicionada com sucesso!")
+            
+        except Error as e:
+            messagebox.showerror("Erro", f"Falha ao adicionar tarefa: {e}")
+    
+    def marcar_tarefa_concluida(self):
+        selecionado = self.tree_tarefas.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione uma tarefa!")
+            return
+            
+        tarefa_id = self.tree_tarefas.item(selecionado[0])['values'][0]
+        
+        try:
+            cursor = self.conexao.cursor()
+            cursor.execute("""
+                UPDATE Tarefas 
+                SET status = 'concluída', data_conclusao = NOW() 
+                WHERE id_tarefa = %s
+            """, (tarefa_id,))
+            self.conexao.commit()
+            cursor.close()
+            
+            self.carregar_tarefas()
+            messagebox.showinfo("Sucesso", "Tarefa marcada como concluída!")
+            
+        except Error as e:
+            messagebox.showerror("Erro", f"Falha ao atualizar tarefa: {e}")
+    
+    def excluir_tarefa(self):
+        selecionado = self.tree_tarefas.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione uma tarefa!")
+            return
+            
+        if not messagebox.askyesno("Confirmação", "Tem certeza que deseja excluir esta tarefa?"):
+            return
+            
+        tarefa_id = self.tree_tarefas.item(selecionado[0])['values'][0]
+        
+        try:
+            cursor = self.conexao.cursor()
+            cursor.execute("DELETE FROM Tarefas WHERE id_tarefa = %s", (tarefa_id,))
+            self.conexao.commit()
+            cursor.close()
+            
+            self.carregar_tarefas()
+            messagebox.showinfo("Sucesso", "Tarefa excluída com sucesso!")
+            
+        except Error as e:
+            messagebox.showerror("Erro", f"Falha ao excluir tarefa: {e}")
+    
+    def carregar_tarefas(self):
+        try:
+            cursor = self.conexao.cursor(dictionary=True)
+            
+            query = "SELECT * FROM Tarefas"
+            params = []
+            
+            status = self.filtro_status_tarefas.get()
+            if status != "Todas":
+                query += " WHERE status = %s"
+                params.append(status)
+            
+            cursor.execute(query, params)
+            tarefas = cursor.fetchall()
+            cursor.close()
+            
+            self.tree_tarefas.delete(*self.tree_tarefas.get_children())
+            
+            for tarefa in tarefas:
+                self.tree_tarefas.insert('', 'end', values=(
+                    tarefa['id_tarefa'],
+                    tarefa['descricao'],
+                    tarefa['status'],
+                    tarefa['data_criacao'].strftime('%d/%m/%Y %H:%M'),
+                    tarefa.get('responsavel', '')
+                ))
+                
+        except Error as e:
+            messagebox.showerror("Erro", f"Falha ao carregar tarefas: {e}")
+    
+    def carregar_funcionarios(self):
+        try:
+            cursor = self.conexao.cursor(dictionary=True)
+            
+            query = "SELECT * FROM RH"
+            params = []
+            
+            departamento = self.filtro_departamento_rh.get()
+            if departamento:
+                query += " WHERE departamento = %s"
+                params.append(departamento)
+            
+            cursor.execute(query, params)
+            funcionarios = cursor.fetchall()
+            cursor.close()
+            
+            self.tree_rh.delete(*self.tree_rh.get_children())
+            
+            for func in funcionarios:
+                self.tree_rh.insert('', 'end', values=(
+                    func['id_rh'],
+                    func['nome_funcionario'],
+                    func['cpf_funcionario'],
+                    func['cargo'],
+                    f"R$ {func['salario_base']:.2f}",
+                    func['status_contrato'],
+                    func['departamento'],
+                    func['email_corporativo'],
+                    func['telefone_contato']
+                ))
+                
+        except Error as e:
+            messagebox.showerror("Erro", f"Falha ao carregar funcionários: {e}")
+    
+    def obter_departamentos(self):
+        try:
+            cursor = self.conexao.cursor()
+            cursor.execute("SELECT DISTINCT departamento FROM RH")
+            departamentos = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+            return departamentos
+        except Error as e:
+            messagebox.showerror("Erro", f"Falha ao obter departamentos: {e}")
+            return []
+    
+    def fazer_login(self):
+        usuario = self.entry_usuario.get()
+        senha = self.entry_senha.get()
+        
+        if usuario == "admin" and senha == "admin123":
+            self.usuario_logado = usuario
+            self.admin_logado = True
+            self.mostrar_tela_principal()
+        else:
+            messagebox.showerror("Erro", "Credenciais inválidas!")
+    
+    def logout(self):
+        self.frame_principal.pack_forget()
+        self.frame_login.pack(fill='both', expand=True)
+        self.entry_usuario.delete(0, tk.END)
+        self.entry_senha.delete(0, tk.END)
+        self.entry_usuario.focus()
+        self.usuario_logado = None
+        self.admin_logado = False
+    
+    def mostrar_tela_principal(self):
+        self.frame_login.pack_forget()
+        self.frame_principal.pack(fill='both', expand=True)
+        self.label_usuario.config(text=f"Usuário: {self.usuario_logado} | Admin: {'Sim' if self.admin_logado else 'Não'}")
+    
+    def __del__(self):
+        if hasattr(self, 'conexao') and self.conexao.is_connected():
+            self.conexao.close()
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = SistemaGestaoEmpresarial(root)
+    root.mainloop()
